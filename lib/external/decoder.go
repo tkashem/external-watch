@@ -1,11 +1,13 @@
 package external
 
 import (
+	"log"
 	"errors"
+	"time"
 
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apimachinery/pkg/runtime"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/tkashem/external-watch/lib/appregistry"
 )
 
 // Decoder implements the watch.Decoder interface.
@@ -30,18 +32,48 @@ func (d *Decoder) Close() {
 }
 
 func (d *Decoder) run() {
-	d.items<- watch.Event{
-		Type: watch.Added,
-		Object: &ExternalSource{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "redhat-operators",
-				Namespace: "redhat-operators",
-			},
-			Spec: ExternalSourceSpec{
-				Endpoint: "https:quay.io",
-			},
-		},
+	defer func() {
+		close(d.items)
+	}()
+
+	source := &OperatorSource{
+		Endpoint: "https://quay.io/cnr",
+		Namespace: "akashem",
 	}
 
-	close(d.items)
+	lister := &Lister{}
+	reflector := &Reflector{
+		lister: lister,
+		store: map[string]*appregistry.RegistryMetadata{},
+		source: source,
+	}
+
+	log.Printf("watching external operator source - %s", source)
+
+	log.Print("listing all")
+	events, err := reflector.List()
+	if err != nil {
+		log.Printf("list error - %v", err)
+		return
+	}
+
+	for _, event := range events {
+		d.items<- *event
+	}
+
+	log.Print("watching for updates")
+	for {
+		<-time.After(5 * time.Second)
+		// log.Printf("polling for changes")
+
+		events, err := reflector.Watch()
+		if err != nil {
+			log.Printf("list error - %v", err)
+			return
+		}
+	
+		for _, event := range events {
+			d.items<- *event
+		}		
+	}
 }

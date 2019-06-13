@@ -1,18 +1,22 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/tkashem/external-watch/lib/external"
 )
 
 func main() {
-	fmt.Println("watching external resources")
-
 	watcher := external.NewWatch()
 
 	ch := watcher.ResultChan()
 	for event := range ch {
-		fmt.Println("event=%v", event)
+		registry, ok := event.Object.(*external.OperatorRegistry)
+		if !ok {
+			log.Printf("wrong type of object, event type=%s", event.Type)
+			continue
+		}
+		
+		log.Printf("new watch event - type=%s object=%s", event.Type, registry.Spec.String())
 	}
 }
